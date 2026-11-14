@@ -1,0 +1,9 @@
+<resources>
+    <!-- Window theme only; the UI itself is themed in Compose (ui/theme/Theme.kt).
+         Always dark so there is never a white flash on launch. -->
+    <style name="Theme.FocusOn" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/ink</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

@@ -1,0 +1,84 @@
+# Focus-On
+
+An Android app that silences the apps that drain your time (Instagram, YouTube, anything you pick) for as long as you decide. Black and champagne-gold design, bold statements about focus, and a 7-day view of where your hours actually went.
+
+## What it does
+
+| Screen | What you see |
+|---|---|
+| **Onboarding** (first launch) | Three manifesto pages, then "Grant the keys": the permissions, each with Allow → gold tick |
+| **Home** | A rotating statement, "The last 7 days" (time given to your 5 most-used apps), your apps ranked by daily use, duration presets (25 min – 3 h) or Custom (5 min – 12 h 55 min), **Begin focus** |
+| **In focus** | A gold ring counting down, rotating statements, the silenced apps greyed out. No stop button. |
+| **Silenced app opened** | Pure black, one bold statement, a small gold timer at the bottom. Back goes to the home screen. |
+
+Debug builds (run from Android Studio or `gradlew installDebug`) also show a **1 min · test** duration and an **End session** link so you don't have to wait while testing. Release builds don't.
+
+## Build and run
+
+Needs JDK 17+ (21 works), the Android SDK (platform 35, build-tools 34), and a phone with **USB debugging** on.
+
+From PowerShell in this folder:
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.10"
+.\gradlew.bat installDebug        # build and install on the connected phone
+.\gradlew.bat testDebugUnitTest   # unit tests
+```
+
+`local.properties` points Gradle at the SDK (`sdk.dir=D\:\\Android\\Sdk`). If Gradle times out downloading, also set `$env:GRADLE_OPTS = "-Djava.net.preferIPv4Stack=true"`.
+
+Or open the folder in Android Studio and press Run.
+
+## Permissions
+
+| Permission | Why | Required? |
+|---|---|---|
+| Usage access | See which app is open, and rank apps by use | Yes |
+| Display over other apps | Show the black screen on top of a silenced app | Yes |
+| Notifications | Countdown while you focus, "Focus complete" at the end | Recommended |
+| Unrestricted battery | Stops Android closing the blocker mid-session | Recommended |
+
+The app has no internet permission; nothing leaves the phone.
+
+**Xiaomi / Redmi / POCO, Oppo, Vivo, Realme, OnePlus, Motorola:** also allow autostart / unrestricted background activity for Focus-On in **Settings → Apps**, or the blocker may stop after a while.
+
+## How it works
+
+```
+MainActivity → MainScreen        picks Onboarding / Home / In-focus screen
+SessionStore                     "silence these apps from START until END" (SharedPreferences)
+Usage.kt                         last 7 days of foreground time per app (UsageStatsManager)
+FocusService (foreground)        every 500 ms asks UsageStatsManager which app is in front
+    └─ silenced app in front  →  opens BlockActivity on top of it
+BlockActivity                    black screen, statement, timer; Back = home screen
+BootReceiver                     restarts FocusService after a reboot if a session is still running
+```
+
+| File | What it does |
+|---|---|
+| `ui/MainScreen.kt` | App state and routing between the three screens |
+| `ui/OnboardingScreen.kt` | Manifesto pages and permissions |
+| `ui/HomeScreen.kt` | Statement, 7-day insight, ranked app list, durations, custom-duration and confirm dialogs |
+| `ui/ActiveSessionScreen.kt` | Countdown ring and silenced apps |
+| `ui/Quotes.kt` | The statements. Edit freely; keep each under ~85 characters |
+| `ui/components/Components.kt` | Gold button, chips, gold tick, rotating statement, section headers |
+| `ui/theme/Theme.kt` | Colours (`Lux`), fonts (`LuxFonts`), text styles (`LuxType`) |
+| `block/BlockActivity.kt` | The black lock screen |
+| `service/FocusService.kt` | Foreground-app detection loop and notifications |
+| `data/` | Session state, installed apps, usage stats |
+
+## Fonts
+
+Playfair Display (statements, titles, numbers) and Inter (labels, body) are bundled in `res/font` so the app looks the same on every phone. Both are under the SIL Open Font License; the licence texts ship in `assets/licenses`.
+
+## Known limits
+
+- **You can still cheat** by turning off Usage access or uninstalling the app in Settings. Making it strict (Device Admin to block uninstalling, locking Settings during a session) is the next step.
+- **Browsers aren't blocked**, so instagram.com in Chrome still works. Blocking websites needs an AccessibilityService.
+- **Split-screen and picture-in-picture** aren't specially handled.
+- Built for **sideloading onto your own phone**. Publishing on Google Play would need policy declarations for the foreground service and the battery-optimization request.
+- The internal package ID is still `com.focuslock.app` (changing it would install as a separate app).
+
+## Tech
+
+Kotlin · Jetpack Compose (Material 3) · minSdk 26 (Android 8.0) · targetSdk 35 · AGP 8.7.3 · Gradle 8.11.1 · tested on a Motorola Edge 60 Fusion (Android 17)

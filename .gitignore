@@ -1,0 +1,29 @@
+# Gradle / Kotlin build output and caches
+.gradle/
+.kotlin/
+build/
+/captures/
+.externalNativeBuild/
+.cxx/
+
+# Machine-specific: path to your Android SDK
+/local.properties
+
+# IDEs
+*.iml
+/.idea/
+.vscode/
+
+# Signing keys and secrets: never commit these
+*.jks
+*.keystore
+keystore.properties
+
+# Built apps outside build/
+*.apk
+*.aab
+
+# OS files and logs
+.DS_Store
+Thumbs.db
+*.log
