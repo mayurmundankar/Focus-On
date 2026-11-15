@@ -29,6 +29,37 @@ $env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.10"
 
 Or open the folder in Android Studio and press Run.
 
+## Release build (for the phone you actually use)
+
+Debug builds are **debuggable**: any computer you have ever authorised for USB debugging can read and change the app's data (`adb shell run-as`) or attach a debugger. Use a signed release build for daily use, and turn USB debugging off when you're not developing.
+
+1. Create a signing key once, outside the repo folder (pick your own passwords; `keytool` ships with the JDK):
+   ```powershell
+   & "C:\Program Files\Java\jdk-21.0.10\bin\keytool.exe" -genkeypair -v -keystore D:\Android\keys\focus-on.jks -alias focus-on -keyalg RSA -keysize 4096 -validity 10000
+   ```
+2. Create `keystore.properties` next to `settings.gradle.kts` (git-ignored, never commit it):
+   ```properties
+   storeFile=D:/Android/keys/focus-on.jks
+   storePassword=your-store-password
+   keyAlias=focus-on
+   keyPassword=your-key-password
+   ```
+3. Uninstall the debug build from the phone (different signing key), then:
+   ```powershell
+   .\gradlew.bat installRelease
+   ```
+
+Back up the `.jks` file and its passwords somewhere safe: without them you can't install updates over the existing app.
+
+## Security
+
+- **No internet permission.** The app cannot send anything off the phone.
+- **Nothing exported except the launcher screen.** The service, lock screen and boot receiver can't be started or messaged by other apps.
+- **Private data stays private:** session times and your app selection live in app-private storage, excluded from cloud backup and device-to-device transfer.
+- **Task hijacking blocked** (`taskAffinity=""` on the main screen).
+- **Build integrity:** the Gradle wrapper is Gradle 8.11.1's own, and a GitHub Action (`.github/workflows/gradle-wrapper-validation.yml`) rejects any push or pull request that swaps `gradle-wrapper.jar` for a non-genuine one.
+- **Release builds** are not debuggable and are shrunk/obfuscated with R8.
+
 ## Permissions
 
 | Permission | Why | Required? |
@@ -73,7 +104,7 @@ Playfair Display (statements, titles, numbers) and Inter (labels, body) are bund
 
 ## Known limits
 
-- **You can still cheat** by turning off Usage access or uninstalling the app in Settings. Making it strict (Device Admin to block uninstalling, locking Settings during a session) is the next step.
+- **You can still cheat** by changing the phone's clock, force-stopping the app, turning off Usage access or uninstalling it in Settings. Making it strict (Device Admin to block uninstalling, locking Settings during a session) is the next step.
 - **Browsers aren't blocked**, so instagram.com in Chrome still works. Blocking websites needs an AccessibilityService.
 - **Split-screen and picture-in-picture** aren't specially handled.
 - Built for **sideloading onto your own phone**. Publishing on Google Play would need policy declarations for the foreground service and the battery-optimization request.

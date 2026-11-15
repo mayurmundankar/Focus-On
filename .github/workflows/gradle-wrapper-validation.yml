@@ -1,0 +1,19 @@
+# Fails any push or pull request whose gradle/wrapper/gradle-wrapper.jar is not a
+# genuine Gradle release (checked against Gradle's published checksums).
+# The wrapper jar runs on every machine that builds this project, so a swapped
+# jar in a pull request would be a direct path to taking over a developer's PC.
+name: Validate Gradle wrapper
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: gradle/actions/wrapper-validation@v4
