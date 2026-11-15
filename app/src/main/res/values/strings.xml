@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Focus-On</string>
+    <string name="web_guard_label">Focus-On website blocking</string>
+    <string name="web_guard_description">During a focus session, Focus-On reads only the address bar of your web browser, so the websites of apps you silenced (like instagram.com) are locked too. It works only in browsers and switches itself off when the session ends. UPI and banking apps refuse to pay while it is on, so it also switches itself off the moment you open one; a notification then turns it back on in one tap. Nothing is stored or sent: Focus-On has no internet access.</string>
 </resources>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Website blocking. Android delivers events to WebGuardService ONLY from the browsers
+  listed in packageNames (keep identical to Browsers.URL_BAR_IDS). It never sees
+  other apps or the keyboard. It reads the address bar only during a focus session.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/web_guard_description"
+    android:notificationTimeout="200"
+    android:packageNames="com.android.chrome,com.chrome.beta,com.chrome.dev,com.chrome.canary,com.brave.browser,com.brave.browser_beta,com.microsoft.emmx,com.vivaldi.browser,com.kiwibrowser.browser,org.mozilla.firefox,org.mozilla.firefox_beta,org.mozilla.focus,com.sec.android.app.sbrowser,com.opera.browser,com.opera.mini.native,com.duckduckgo.mobile.android,com.mi.globalbrowser,com.yandex.browser" />

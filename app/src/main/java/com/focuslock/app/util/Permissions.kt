@@ -4,25 +4,29 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.AppOpsManager
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
+import com.focuslock.app.service.WebGuardService
 
-/** Snapshot of which permissions FocusLock currently has. */
+/** Snapshot of which permissions Focus-On currently has. */
 data class PermissionState(
     val usageAccess: Boolean,
     val overlay: Boolean,
     val notifications: Boolean,
     val batteryUnrestricted: Boolean,
+    /** Website blocking (accessibility service) is switched on. */
+    val webGuard: Boolean,
 ) {
     /** Without these two, blocking cannot work at all. */
     val requiredGranted: Boolean get() = usageAccess && overlay
-    val allGranted: Boolean get() = requiredGranted && notifications && batteryUnrestricted
 
     companion object {
         fun read(context: Context) = PermissionState(
@@ -30,6 +34,7 @@ data class PermissionState(
             overlay = Permissions.canDrawOverlays(context),
             notifications = Permissions.hasNotificationPermission(context),
             batteryUnrestricted = Permissions.isIgnoringBatteryOptimizations(context),
+            webGuard = Permissions.isWebGuardEnabled(context),
         )
     }
 }
@@ -67,9 +72,33 @@ object Permissions {
         context.getSystemService(PowerManager::class.java)
             .isIgnoringBatteryOptimizations(context.packageName)
 
+    /** True when the user has switched on Focus-On website blocking in Accessibility settings. */
+    fun isWebGuardEnabled(context: Context): Boolean {
+        val enabled = Settings.Secure.getString(
+            context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        val me = ComponentName(context, WebGuardService::class.java)
+        return enabled.split(':').any { ComponentName.unflattenFromString(it) == me }
+    }
+
     // --- Intents that open the right Settings page for each permission ---
 
     fun usageAccessIntent(): Intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+
+    /**
+     * Accessibility settings. The extras ask Settings to scroll to and highlight Focus-On's
+     * row (honoured by Pixel / AOSP-based Settings; ignored elsewhere, which is harmless).
+     */
+    fun accessibilityIntent(context: Context): Intent {
+        val key = ComponentName(context, WebGuardService::class.java).flattenToString()
+        return Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            .putExtra(EXTRA_FRAGMENT_ARG_KEY, key)
+            .putExtra(EXTRA_SHOW_FRAGMENT_ARGS, Bundle().apply { putString(EXTRA_FRAGMENT_ARG_KEY, key) })
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    private const val EXTRA_FRAGMENT_ARG_KEY = ":settings:fragment_args_key"
+    private const val EXTRA_SHOW_FRAGMENT_ARGS = ":settings:show_fragment_args"
 
     fun overlayIntent(context: Context): Intent =
         Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, packageUri(context))

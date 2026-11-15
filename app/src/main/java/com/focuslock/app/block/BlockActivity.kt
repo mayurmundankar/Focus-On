@@ -52,6 +52,9 @@ class BlockActivity : ComponentActivity() {
     private var appName by mutableStateOf("This app")
     private var quote by mutableStateOf(Quotes.random())
 
+    /** Website blocks: the browser underneath is already on its start page (or a blank tab), so Back returns to it. */
+    private var backToBrowser = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
@@ -59,9 +62,10 @@ class BlockActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
         appName = labelFrom(intent)
+        backToBrowser = intent.getBooleanExtra(EXTRA_BACK_TO_BROWSER, false)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() = goHome()
+            override fun handleOnBackPressed() = leave()
         })
 
         setContent {
@@ -80,11 +84,23 @@ class BlockActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         appName = labelFrom(intent)
+        backToBrowser = intent.getBooleanExtra(EXTRA_BACK_TO_BROWSER, false)
         quote = Quotes.random()
     }
 
+    /** A website ("instagram.com") from WebGuardService, or an app package from FocusService. */
     private fun labelFrom(intent: Intent?): String =
-        intent?.getStringExtra(EXTRA_PACKAGE)?.let { appLabel(this, it) } ?: "This app"
+        intent?.getStringExtra(EXTRA_LABEL)
+            ?: intent?.getStringExtra(EXTRA_PACKAGE)?.let { appLabel(this, it) }
+            ?: "This app"
+
+    /**
+     * App blocks go to the home screen (the app itself stays locked).
+     * Website blocks just close, revealing the browser on its start page, ready for other work.
+     */
+    private fun leave() {
+        if (backToBrowser) finish() else goHome()
+    }
 
     private fun goHome() {
         val home = Intent(Intent.ACTION_MAIN)
@@ -96,6 +112,8 @@ class BlockActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_PACKAGE = "blocked_package"
+        const val EXTRA_LABEL = "blocked_label"
+        const val EXTRA_BACK_TO_BROWSER = "back_to_browser"
     }
 }
 
@@ -132,7 +150,7 @@ private fun BlockScreen(
             .padding(horizontal = 32.dp)
     ) {
         Eyebrow(
-            text = "$appName · silenced",
+            text = "$appName Â· silenced",
             color = Lux.GoldDeep,
             modifier = Modifier
                 .align(Alignment.TopStart)

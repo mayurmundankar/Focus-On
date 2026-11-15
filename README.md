@@ -10,6 +10,7 @@ An Android app that silences the apps that drain your time (Instagram, YouTube, 
 | **Home** | A rotating statement, "The last 7 days" (time given to your 5 most-used apps), your apps ranked by daily use, duration presets (25 min – 3 h) or Custom (5 min – 12 h 55 min), **Begin focus** |
 | **In focus** | A gold ring counting down, rotating statements, the silenced apps greyed out. No stop button. |
 | **Silenced app opened** | Pure black, one bold statement, a small gold timer at the bottom. Back goes to the home screen. |
+| **Silenced website opened** | Same black screen, labelled e.g. "INSTAGRAM.COM · SILENCED", when a silenced app's website is opened in a browser (needs Website blocking on). Underneath, Focus-On taps the browser's own Home / New tab button so the tab goes to its normal start page (search box, shortcuts); Back returns there, so the browser stays usable even if the silenced site was the last open tab. Browsers without such a button get a blank tab instead. |
 
 Debug builds (run from Android Studio or `gradlew installDebug`) also show a **1 min · test** duration and an **End session** link so you don't have to wait while testing. Release builds don't.
 
@@ -54,6 +55,9 @@ Back up the `.jks` file and its passwords somewhere safe: without them you can't
 ## Security
 
 - **No internet permission.** The app cannot send anything off the phone.
+- **Website blocking is tightly scoped.** The accessibility service only receives events from the 18 browsers listed in `res/xml/web_guard_config.xml` (a unit test keeps that list in sync with the code), does nothing outside a focus session, reads only the address bar, and stores nothing.
+- **Website blocking never stays on.** UPI and banking apps (Google Pay, PhonePe, Paytm, BHIM, bank apps) refuse payments while any non-system accessibility service is switched on: an anti-fraud rule against malware. So Focus-On's service switches itself off when a session ends, is ended early, or the phone restarts with no session, and **the moment a payment or bank app comes to the front** (any app that handles `upi://` links, plus a list of known wallet and bank apps; WhatsApp, Amazon and other everyday apps are left out). Nothing for the user to do before paying. Android lets only the user switch an accessibility service back on, so after the payment a notification offers to do it in one tap. A payment app you chose to silence doesn't count (it would be a way round website blocking). If an unrecognised payment app still refuses, the session screen has "Pause website blocking". Silenced apps stay silenced.
+- **Calls always get through.** The phone app, in-call screens and emergency apps can never be silenced, and nothing is blocked while any call (phone, WhatsApp, Meet, …) is ringing or in progress.
 - **Nothing exported except the launcher screen.** The service, lock screen and boot receiver can't be started or messaged by other apps.
 - **Private data stays private:** session times and your app selection live in app-private storage, excluded from cloud backup and device-to-device transfer.
 - **Task hijacking blocked** (`taskAffinity=""` on the main screen).
@@ -66,6 +70,7 @@ Back up the `.jks` file and its passwords somewhere safe: without them you can't
 |---|---|---|
 | Usage access | See which app is open, and rank apps by use | Yes |
 | Display over other apps | Show the black screen on top of a silenced app | Yes |
+| Website blocking (Accessibility) | Lock instagram.com, youtube.com, … in browsers. Offered on the session screen ("Block websites too"), on only for that session: it switches itself off when the session ends and whenever a payment app opens. If the switch is greyed out: Settings → Apps → Focus-On → ⋮ → Allow restricted settings | Optional, per session |
 | Notifications | Countdown while you focus, "Focus complete" at the end | Recommended |
 | Unrestricted battery | Stops Android closing the blocker mid-session | Recommended |
 
@@ -83,6 +88,7 @@ FocusService (foreground)        every 500 ms asks UsageStatsManager which app i
     └─ silenced app in front  →  opens BlockActivity on top of it
 BlockActivity                    black screen, statement, timer; Back = home screen
 BootReceiver                     restarts FocusService after a reboot if a session is still running
+WebGuardService (accessibility)  during a session, reads the browser's address bar; silenced app's website → BlockActivity
 ```
 
 | File | What it does |
@@ -96,6 +102,8 @@ BootReceiver                     restarts FocusService after a reboot if a sessi
 | `ui/theme/Theme.kt` | Colours (`Lux`), fonts (`LuxFonts`), text styles (`LuxType`) |
 | `block/BlockActivity.kt` | The black lock screen |
 | `service/FocusService.kt` | Foreground-app detection loop and notifications |
+| `service/WebGuardService.kt`, `service/Browsers.kt` | Website blocking: browser address-bar reading |
+| `data/Websites.kt` | Which websites belong to which app (Instagram → instagram.com, …) and safe address matching |
 | `data/` | Session state, installed apps, usage stats |
 
 ## Fonts
@@ -105,7 +113,7 @@ Playfair Display (statements, titles, numbers) and Inter (labels, body) are bund
 ## Known limits
 
 - **You can still cheat** by changing the phone's clock, force-stopping the app, turning off Usage access or uninstalling it in Settings. Making it strict (Device Admin to block uninstalling, locking Settings during a session) is the next step.
-- **Browsers aren't blocked**, so instagram.com in Chrome still works. Blocking websites needs an AccessibilityService.
+- **Website blocking covers 18 browsers** (Chrome, Brave, Edge, Firefox, Samsung Internet, Opera, DuckDuckGo, …) and the websites of 25 popular apps. Not covered: in-app browsers (a link opened inside Gmail or WhatsApp), and browsers not on the list unless their address bar can be found. Silence those browsers as apps if needed.
 - **Split-screen and picture-in-picture** aren't specially handled.
 - Built for **sideloading onto your own phone**. Publishing on Google Play would need policy declarations for the foreground service and the battery-optimization request.
 - The internal package ID is still `com.focuslock.app` (changing it would install as a separate app).

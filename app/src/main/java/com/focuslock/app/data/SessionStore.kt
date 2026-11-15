@@ -16,6 +16,7 @@ object SessionStore {
     private const val KEY_LAST_DURATION = "last_duration_min"
     private const val KEY_START_TIME = "session_start_time"
     private const val KEY_ONBOARDED = "onboarded"
+    private const val KEY_WEB_PAUSED_FOR_PAYMENT = "web_paused_for_payment"
 
     private fun prefs(context: Context): SharedPreferences =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -24,7 +25,8 @@ object SessionStore {
     fun startSession(context: Context, packages: Set<String>, minutes: Int): Long {
         val now = System.currentTimeMillis()
         val endTime = now + minutes * 60_000L
-        val toBlock = packages - context.packageName // never block ourselves
+        // Never block ourselves, or the phone / emergency apps.
+        val toBlock = packages - context.packageName - ProtectedApps.packages(context)
         prefs(context).edit(commit = true) {
             putLong(KEY_START_TIME, now)
             putLong(KEY_END_TIME, endTime)
@@ -39,7 +41,16 @@ object SessionStore {
             remove(KEY_START_TIME)
             remove(KEY_END_TIME)
             remove(KEY_BLOCKED)
+            remove(KEY_WEB_PAUSED_FOR_PAYMENT)
         }
+    }
+
+    /** Website blocking switched itself off this session because a payment app opened. */
+    fun webPausedForPayment(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_WEB_PAUSED_FOR_PAYMENT, false)
+
+    fun setWebPausedForPayment(context: Context, paused: Boolean) {
+        prefs(context).edit { putBoolean(KEY_WEB_PAUSED_FOR_PAYMENT, paused) }
     }
 
     /** End time of the current session, or 0 if there is none. */

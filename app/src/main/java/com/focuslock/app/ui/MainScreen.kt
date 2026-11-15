@@ -26,6 +26,7 @@ import com.focuslock.app.data.SessionStore
 import com.focuslock.app.data.loadLaunchableApps
 import com.focuslock.app.data.loadWeeklyUsage
 import com.focuslock.app.service.FocusService
+import com.focuslock.app.service.WebGuardService
 import com.focuslock.app.ui.theme.Lux
 import com.focuslock.app.util.PermissionState
 import com.focuslock.app.util.Permissions
@@ -49,6 +50,7 @@ fun MainScreen() {
     var perms by remember { mutableStateOf(PermissionState.read(context)) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var sessionEnd by remember { mutableLongStateOf(SessionStore.endTime(context)) }
+    var webPausedForPayment by remember { mutableStateOf(SessionStore.webPausedForPayment(context)) }
     var onboarded by remember { mutableStateOf(SessionStore.isOnboarded(context)) }
     var apps by remember { mutableStateOf<List<AppInfo>?>(null) }
     var usage by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
@@ -74,11 +76,21 @@ fun MainScreen() {
         while (true) {
             now = System.currentTimeMillis()
             sessionEnd = SessionStore.endTime(context)
+            webPausedForPayment = SessionStore.webPausedForPayment(context)
             delay(1_000)
         }
     }
 
     LaunchedEffect(Unit) { apps = loadLaunchableApps(context) }
+
+    // Re-read permissions shortly after switching website blocking off (it takes a moment).
+    var permsCheck by remember { mutableIntStateOf(0) }
+    LaunchedEffect(permsCheck) {
+        if (permsCheck > 0) {
+            delay(700)
+            perms = PermissionState.read(context)
+        }
+    }
 
     // Usage needs Usage access, so (re)load once it's granted.
     LaunchedEffect(perms.usageAccess) {
@@ -143,7 +155,15 @@ fun MainScreen() {
                         blocked = SessionStore.blockedPackages(context),
                         apps = apps,
                         perms = perms,
+                        webPausedForPayment = webPausedForPayment,
                         isDebug = isDebug,
+                        onEnableWebGuard = {
+                            Permissions.open(context, Permissions.accessibilityIntent(context))
+                        },
+                        onPauseWebGuard = {
+                            WebGuardService.turnOff()
+                            permsCheck++
+                        },
                         onFixPermissions = {
                             val intent = if (!perms.usageAccess) {
                                 Permissions.usageAccessIntent()
@@ -155,6 +175,7 @@ fun MainScreen() {
                         onEndEarly = {
                             FocusService.stop(context)
                             SessionStore.clearSession(context)
+                            WebGuardService.turnOff()
                             sessionEnd = 0L
                         },
                     )

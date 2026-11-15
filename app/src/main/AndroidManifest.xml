@@ -27,6 +27,11 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />
         </intent>
+        <!-- Find installed UPI apps, so website blocking switches off before a payment -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="upi" />
+        </intent>
     </queries>
 
     <!-- No backups and (Android 12+) no device-to-device transfer of app data. -->
@@ -82,5 +87,21 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- Website blocking (optional, user turns it on in Accessibility settings).
+             Only the system can bind to it; it only receives events from the browsers
+             listed in web_guard_config.xml. -->
+        <service
+            android:name=".service.WebGuardService"
+            android:exported="false"
+            android:label="@string/web_guard_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/web_guard_config" />
+        </service>
     </application>
 </manifest>

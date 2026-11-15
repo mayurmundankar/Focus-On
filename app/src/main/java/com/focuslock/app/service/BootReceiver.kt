@@ -14,6 +14,7 @@ class BootReceiver : BroadcastReceiver() {
                     FocusService.start(context)
                 } else {
                     SessionStore.clearSession(context)
+                    WebGuardService.turnOff()
                 }
             }
         }

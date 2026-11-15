@@ -22,6 +22,8 @@ import androidx.core.content.ContextCompat
 import com.focuslock.app.MainActivity
 import com.focuslock.app.R
 import com.focuslock.app.block.BlockActivity
+import com.focuslock.app.data.PaymentApps
+import com.focuslock.app.data.ProtectedApps
 import com.focuslock.app.data.SessionStore
 import com.focuslock.app.util.Permissions
 import java.util.Date
@@ -31,7 +33,9 @@ import java.util.Date
  *  1. shows an ongoing countdown notification (so Android keeps it alive),
  *  2. checks every 500 ms which app is in front, using UsageStatsManager,
  *  3. opens [BlockActivity] on top whenever a blocked app comes to the front,
- *  4. stops itself when the timer runs out.
+ *  4. switches website blocking off the moment a payment or bank app opens
+ *     (they refuse to pay while an accessibility service is on),
+ *  5. stops itself when the timer runs out.
  */
 class FocusService : Service() {
 
@@ -42,6 +46,15 @@ class FocusService : Service() {
     private var lastQueryTime = 0L
     private var foregroundPackage: String? = null
     private var lastBlockShownAt = 0L
+
+    /** Phone, in-call and emergency apps: never covered. Looked up once per service start. */
+    private var protectedPackages: Set<String> = emptySet()
+
+    /** UPI, wallet and bank apps. Looked up once per service start. */
+    private var paymentPackages: Set<String> = emptySet()
+
+    /** The "turn website blocking back on" notice was already shown for the last payment. */
+    private var restoreNoticeShown = false
 
     private val poll = object : Runnable {
         override fun run() {
@@ -62,6 +75,8 @@ class FocusService : Service() {
         usageStats = getSystemService(UsageStatsManager::class.java)
         power = getSystemService(PowerManager::class.java)
         createNotificationChannels()
+        protectedPackages = ProtectedApps.packages(this)
+        paymentPackages = PaymentApps.packages(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -102,11 +117,43 @@ class FocusService : Service() {
         lastQueryTime = now
 
         val current = foregroundPackage ?: return
+        handlePaymentApps(current)
+        // Calls always get through: never cover a ringing or active call (phone or app
+        // call), and never cover the dialer / emergency apps, even in older sessions.
+        if (ProtectedApps.isCallActive(this) || current in protectedPackages) return
         if (current in SessionStore.blockedPackages(this) &&
             now - lastBlockShownAt > RELAUNCH_COOLDOWN_MS
         ) {
             lastBlockShownAt = now
             showBlockScreen(current)
+        }
+    }
+
+    /**
+     * Payments must just work. When a payment or bank app comes to the front, website
+     * blocking switches itself off before the user reaches the payment screen. Android
+     * lets only the user switch an accessibility service back on, so once they leave the
+     * payment app we post a notice that does it in one tap.
+     *
+     * A payment app the user chose to silence is covered by the lock screen instead and
+     * changes nothing (otherwise opening it would be a way round website blocking).
+     */
+    private fun handlePaymentApps(current: String) {
+        if (current in paymentPackages && current !in SessionStore.blockedPackages(this)) {
+            if (WebGuardService.isRunning()) {
+                WebGuardService.turnOff()
+                SessionStore.setWebPausedForPayment(this, true)
+                restoreNoticeShown = false
+            }
+            return
+        }
+        if (!restoreNoticeShown &&
+            current != packageName &&
+            SessionStore.webPausedForPayment(this) &&
+            !WebGuardService.isRunning()
+        ) {
+            restoreNoticeShown = true
+            notifyRestoreWebGuard()
         }
     }
 
@@ -130,6 +177,9 @@ class FocusService : Service() {
 
     private fun onSessionFinished() {
         SessionStore.clearSession(this)
+        // Website blocking must not outlive the session: payment apps refuse to work while it's on.
+        WebGuardService.turnOff()
+        cancelRestoreNotice(this)
         notifySessionComplete()
         stopEverything()
     }
@@ -191,6 +241,28 @@ class FocusService : Service() {
             .notify(NOTIFICATION_ID_DONE, notification)
     }
 
+    /** After a payment: one tap opens Accessibility settings to switch website blocking back on. */
+    private fun notifyRestoreWebGuard() {
+        if (!Permissions.hasNotificationPermission(this)) return
+        val settings = PendingIntent.getActivity(
+            this,
+            1,
+            Permissions.accessibilityIntent(this),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val notification = NotificationCompat.Builder(this, CHANNEL_WEB)
+            .setSmallIcon(R.drawable.ic_stat_focus)
+            .setColor(0xFFC9A96E.toInt())
+            .setContentTitle("Website blocking paused for your payment")
+            .setContentText("Tap to switch it back on. Your apps are still silenced.")
+            .setAutoCancel(true)
+            .setTimeoutAfter(SessionStore.remainingMillis(this).coerceAtLeast(1L))
+            .setContentIntent(settings)
+            .build()
+        getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID_RESTORE_WEB, notification)
+    }
+
     private fun openAppIntent(): PendingIntent = PendingIntent.getActivity(
         this,
         0,
@@ -210,6 +282,11 @@ class FocusService : Service() {
                 CHANNEL_DONE, "Focus complete", NotificationManager.IMPORTANCE_DEFAULT
             ).apply { description = "Tells you when your silenced apps are back" }
         )
+        manager.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_WEB, "Website blocking", NotificationManager.IMPORTANCE_DEFAULT
+            ).apply { description = "Offers to switch website blocking back on after a payment" }
+        )
     }
 
     companion object {
@@ -227,6 +304,14 @@ class FocusService : Service() {
         private const val CHANNEL_DONE = "focus_done"
         private const val NOTIFICATION_ID_ONGOING = 1
         private const val NOTIFICATION_ID_DONE = 2
+        private const val CHANNEL_WEB = "web_blocking"
+        private const val NOTIFICATION_ID_RESTORE_WEB = 3
+
+        /** Removes the "switch website blocking back on" notice (session over, or it's back on). */
+        fun cancelRestoreNotice(context: Context) {
+            context.getSystemService(NotificationManager::class.java)
+                ?.cancel(NOTIFICATION_ID_RESTORE_WEB)
+        }
 
         fun start(context: Context) {
             try {
@@ -239,6 +324,7 @@ class FocusService : Service() {
         }
 
         fun stop(context: Context) {
+            cancelRestoreNotice(context)
             context.stopService(Intent(context, FocusService::class.java))
         }
     }

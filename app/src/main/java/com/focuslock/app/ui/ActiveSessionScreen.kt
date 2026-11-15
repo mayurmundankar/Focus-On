@@ -24,10 +24,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -44,6 +48,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focuslock.app.data.AppInfo
+import com.focuslock.app.data.Websites
 import com.focuslock.app.ui.components.Eyebrow
 import com.focuslock.app.ui.components.GhostButton
 import com.focuslock.app.ui.components.GoldRule
@@ -64,7 +69,10 @@ fun ActiveSessionScreen(
     blocked: Set<String>,
     apps: List<AppInfo>?,
     perms: PermissionState,
+    webPausedForPayment: Boolean,
     isDebug: Boolean,
+    onEnableWebGuard: () -> Unit,
+    onPauseWebGuard: () -> Unit,
     onFixPermissions: () -> Unit,
     onEndEarly: () -> Unit,
 ) {
@@ -194,6 +202,67 @@ fun ActiveSessionScreen(
             }
         }
 
+        // Website blocking: on only during a session, pausable for payments.
+        val sites = remember(blocked) { Websites.domainsFor(blocked).sorted() }
+        var showDisclosure by remember { mutableStateOf(false) }
+        if (sites.isNotEmpty()) {
+            Spacer(Modifier.height(18.dp))
+            if (perms.webGuard) {
+                Text(
+                    "Also on the web: " + sites.joinToString(" · "),
+                    style = LuxType.Small,
+                    color = Lux.Muted,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Pauses by itself when you open a payment app.",
+                    style = LuxType.Small,
+                    color = Lux.Faint,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Payment app still refusing? Pause website blocking",
+                    style = LuxType.Small.copy(textDecoration = TextDecoration.Underline),
+                    color = Lux.Gold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .clickable(onClick = onPauseWebGuard)
+                        .padding(8.dp),
+                )
+            } else if (webPausedForPayment) {
+                // Switched off for a payment; it was already explained, so go straight to Settings.
+                Text(
+                    "Website blocking paused for your payment.",
+                    style = LuxType.Small,
+                    color = Lux.Muted,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(10.dp))
+                GhostButton("Turn it back on", onClick = onEnableWebGuard)
+            } else {
+                Text(
+                    "${sites.first()} still opens in a browser.",
+                    style = LuxType.Small,
+                    color = Lux.Muted,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(10.dp))
+                GhostButton("Block websites too", onClick = { showDisclosure = true })
+            }
+        }
+
+        if (showDisclosure) {
+            WebGuardDisclosure(
+                onAgree = {
+                    showDisclosure = false
+                    onEnableWebGuard()
+                },
+                onDismiss = { showDisclosure = false },
+            )
+        }
+
         Spacer(Modifier.height(40.dp))
         Text(
             "No early exit. That's the point.",
@@ -215,4 +284,54 @@ fun ActiveSessionScreen(
         }
         Spacer(Modifier.height(24.dp))
     }
+}
+
+/**
+ * Prominent disclosure before the user switches on the accessibility service: what it
+ * reads, for how long, and the side effect on payment apps, in plain words.
+ */
+@Composable
+private fun WebGuardDisclosure(onAgree: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Lux.Panel,
+        shape = RoundedCornerShape(6.dp),
+        title = { Text("Block their websites too?", style = LuxType.Title, color = Lux.Ivory) },
+        text = {
+            Column {
+                Text(
+                    "Focus-On uses Android's Accessibility service to read your browser's address bar, " +
+                        "so instagram.com and similar sites lock like their apps.",
+                    style = LuxType.Body,
+                    color = Lux.Muted,
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "• Only browsers, only the address bar, nothing stored or sent.\n" +
+                        "• Only for this session. It switches itself off when the session ends.\n" +
+                        "• Payments keep working: the moment you open a UPI or bank app, it switches " +
+                        "itself off (those apps refuse to pay while it's on). Afterwards, one tap on " +
+                        "the notification turns it back on.",
+                    style = LuxType.Small,
+                    color = Lux.Muted,
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "Next: tap Focus-On website blocking, then turn it on.",
+                    style = LuxType.Small,
+                    color = Lux.GoldLight,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onAgree) {
+                Text("OPEN SETTINGS", style = LuxType.Eyebrow.copy(fontSize = 13.sp), color = Lux.Gold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("NOT NOW", style = LuxType.Eyebrow.copy(fontSize = 13.sp), color = Lux.Muted)
+            }
+        },
+    )
 }

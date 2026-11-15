@@ -20,7 +20,8 @@ data class AppInfo(
 /** Every app that has a launcher icon, minus FocusLock itself and the home screen app. */
 suspend fun loadLaunchableApps(context: Context): List<AppInfo> = withContext(Dispatchers.IO) {
     val pm = context.packageManager
-    val excluded = setOfNotNull(context.packageName, pm.homeScreenPackage())
+    // Never offer ourselves, the home screen, or the phone / emergency apps (see ProtectedApps).
+    val excluded = setOfNotNull(context.packageName, pm.homeScreenPackage()) + ProtectedApps.packages(context)
 
     pm.launcherActivities()
         .distinctBy { it.activityInfo.packageName }
